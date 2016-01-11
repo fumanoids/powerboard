@@ -76,9 +76,9 @@ static void incommingEndpoint(const void *ipacket, uint16_t i_packetLen, flawLes
 {
 	/* check if the incomming msgID and the size fits to any known local msg */
 	const uint8_t *incommingPacket = (const uint8_t*) ipacket;
-	const msgID_t *incommingIDp = ((const msgID_t*)incommingPacket);
-	void *dataPtr = (void*)(incommingIDp + 1U);
-	const msgBufMsgSize_t incommingMessageSize = i_packetLen - sizeof(msgID_t);
+	const uint16_t *incommingIDp = ((const uint16_t*)incommingPacket);
+	void *dataPtr = (void*)(incommingIDp + 1);
+	const msgBufMsgSize_t incommingMessageSize = i_packetLen - sizeof(*incommingIDp);
 
 	const msgBufDescription_t *desc = &_msgPumpBPHandlesBegin;
 

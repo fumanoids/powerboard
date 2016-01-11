@@ -23,7 +23,7 @@ static void onReceivedPacket_msgPumpCallback(msgPump_MsgID_t id, const void *buf
 {
 	const genericProtocoll_Packet_t *packet = (const genericProtocoll_Packet_t*)buffer;
 	const flawLess_genericProtocolHandle_t **iter  = &_genericProtocolEndpointInternalHandlesBegin;
-	const flawLess_genericProtocolHandle_t **iter2 = &_genericProtocolEndpointInternalHandlesBegin;
+//	const flawLess_genericProtocolHandle_t **iter2 = &_genericProtocolEndpointInternalHandlesBegin;
 	const genericProtocol_subProtocolIdentifier_t targetID = packet->subProtocolID;
 	if (MSG_ID_GENERIC_PROTOCOL_PACKET_READY == id)
 	{
@@ -39,12 +39,12 @@ static void onReceivedPacket_msgPumpCallback(msgPump_MsgID_t id, const void *buf
 				((*iter)->callback)(packetForApplication, packetLen, interface);
 
 				/* swap the handle pointer to increment the priority of this endpoint */
-				const flawLess_genericProtocolHandle_t *tmp = *iter;
-				*iter = *iter2;
-				*iter2 = tmp;
+//				const flawLess_genericProtocolHandle_t *tmp = *iter;
+//				*iter = *iter2;
+//				*iter2 = tmp;
 				break;
 			}
-			iter2 = iter;
+//			iter2 = iter;
 			iter++;
 		}
 	}

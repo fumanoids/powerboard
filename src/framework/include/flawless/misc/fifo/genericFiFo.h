@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <string.h>
+
 
 #ifdef CREATE_GENERIC_FIFO
 #undef CREATE_GENERIC_FIFO
@@ -60,33 +62,40 @@
 	{\
 		fifoPrefix ## _FIFO_OKAY,\
 		fifoPrefix ## _FIFO_UNDERRUN,\
-		fifoPrefix ## _FIFO_OVERRUN \
+		fifoPrefix ## _FIFO_OVERRUN, \
+		fifoPrefix ## _FIFO_INVALID_USAGE \
 	} fifoPrefix ## _ErrorType_t;\
 
 
 #define CREATE_FIFO_HANDLE(fifoType, fifoPrefix, fifoCnt) \
 	typedef struct tag_ ## fifoPrefix ## _fifoHandle_t \
 	{\
-		volatile fifoType data[fifoCnt];\
-		volatile uint8_t count, start, end;\
+		fifoType data[fifoCnt];\
+		volatile uint16_t count, start, end;\
 	} fifoPrefix ##_fifoHandle_t; \
 
 
 
 #define CREATE_FIFO_PUT_FCT(fifoType, fifoPrefix, fifoCnt) \
-	static fifoPrefix ## _ErrorType_t fifoPrefix ##_put(fifoType i_data, fifoPrefix ##_fifoHandle_t *i_handle); \
-	static fifoPrefix ## _ErrorType_t fifoPrefix ##_put(fifoType i_data, fifoPrefix ##_fifoHandle_t *i_handle) \
+	static fifoPrefix ## _ErrorType_t fifoPrefix ##_put(const fifoType *i_data, fifoPrefix ##_fifoHandle_t *i_handle); \
+	static fifoPrefix ## _ErrorType_t fifoPrefix ##_put(const fifoType *i_data, fifoPrefix ##_fifoHandle_t *i_handle) \
 	{\
 		fifoPrefix ## _ErrorType_t error = fifoPrefix ## _FIFO_OVERRUN; \
-		GEN_FIFO_CLI_FUNCTION; \
-		if (NULL != i_handle && i_handle->count < fifoCnt) \
+		if (NULL == i_data || NULL == i_handle) \
 		{ \
-			i_handle->data[i_handle->end] = i_data; \
-			i_handle->end = (i_handle->end + 1U) % (fifoCnt); \
-			++(i_handle->count); \
-			error = fifoPrefix ## _FIFO_OKAY; \
+			error = fifoPrefix ## _FIFO_INVALID_USAGE; \
+		} else \
+		{ \
+			GEN_FIFO_CLI_FUNCTION; \
+			if (NULL != i_handle && i_handle->count < fifoCnt) \
+			{ \
+				memcpy(&i_handle->data[i_handle->end], i_data, sizeof(fifoType)); \
+				i_handle->end = (i_handle->end + 1U) % (fifoCnt); \
+				++(i_handle->count); \
+				error = fifoPrefix ## _FIFO_OKAY; \
+			} \
+			GEN_FIFO_SEI_FUNCTION; \
 		} \
-		GEN_FIFO_SEI_FUNCTION; \
 		return error; \
 	}\
 
@@ -96,14 +105,20 @@
 	static fifoPrefix ## _ErrorType_t fifoPrefix ##_peek(const fifoPrefix ##_fifoHandle_t *i_handle,const  uint8_t i_index, fifoType *o_data) \
 	{\
 		fifoPrefix ## _ErrorType_t error = fifoPrefix ## _FIFO_UNDERRUN;\
-		GEN_FIFO_CLI_FUNCTION;\
-		if (NULL != i_handle && i_handle->count > i_index)\
-		{\
-			const uint8_t index = (i_handle->start + i_index) % fifoCnt;\
-			*o_data = i_handle->data[index];\
-			error = fifoPrefix ## _FIFO_OKAY;\
-		}\
-		GEN_FIFO_SEI_FUNCTION;\
+		if (NULL == o_data || NULL == i_handle || i_index >= fifoCnt) \
+		{ \
+			error = fifoPrefix ## _FIFO_INVALID_USAGE; \
+		} else \
+		{ \
+			GEN_FIFO_CLI_FUNCTION;\
+			if (i_handle->count > i_index)\
+			{\
+				const uint8_t index = (i_handle->start + i_index) % fifoCnt;\
+				memcpy(o_data, &i_handle->data[index], sizeof(fifoType)); \
+				error = fifoPrefix ## _FIFO_OKAY;\
+			}\
+			GEN_FIFO_SEI_FUNCTION;\
+		} \
 		return error;\
 	}\
 
@@ -112,15 +127,21 @@
 	static fifoPrefix ## _ErrorType_t fifoPrefix ##_get(fifoPrefix ##_fifoHandle_t *i_handle, fifoType *o_data) \
 	{ \
 		fifoPrefix ## _ErrorType_t error = fifoPrefix ## _FIFO_UNDERRUN; \
-		GEN_FIFO_CLI_FUNCTION; \
-		if (NULL != i_handle && i_handle->count > 0U) \
+		if (NULL == o_data || NULL == i_handle) \
 		{ \
-			*o_data = i_handle->data[i_handle->start]; \
-			i_handle->start = (i_handle->start + 1) % fifoCnt; \
-			--(i_handle->count); \
-			error = fifoPrefix ## _FIFO_OKAY; \
+			error = fifoPrefix ## _FIFO_INVALID_USAGE; \
+		} else \
+		{ \
+			GEN_FIFO_CLI_FUNCTION; \
+			if (NULL != i_handle && i_handle->count > 0U) \
+			{ \
+				memcpy(o_data, &i_handle->data[i_handle->start], sizeof(fifoType)); \
+				i_handle->start = (i_handle->start + 1) % fifoCnt; \
+				--(i_handle->count); \
+				error = fifoPrefix ## _FIFO_OKAY; \
+			} \
+			GEN_FIFO_SEI_FUNCTION; \
 		} \
-		GEN_FIFO_SEI_FUNCTION; \
 		return error; \
 	}
 

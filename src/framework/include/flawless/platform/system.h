@@ -10,13 +10,23 @@
 
 #include <flawless/stdtypes.h>
 
-/**
- * mutex functions
+/*
+ * here are the most important platform dependant functions listed.
+ * The framework cannot work correctly if those functions are not implemented correctly!
+ */
+
+
+/*
+ * mutex functions (eg. suspend all interrupts)
  * The mutex functions must be safe for recursive usage!
  */
-void system_mutex_lock();
-void system_mutex_unlock();
+void system_mutex_lock(void);
+void system_mutex_unlock(void);
 
-uint32_t system_getTime_ms(void);
+typedef uint64_t systemTime_t; //In US
+/*
+ * the current time
+ */
+systemTime_t getSystemTimeUS();
 
 #endif /* SYSTEM_H_ */

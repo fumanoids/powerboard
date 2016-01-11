@@ -8,16 +8,9 @@
 #ifndef SYSTEMINITIALIZER_H_
 #define SYSTEMINITIALIZER_H_
 
-#include <flawless/stdtypes.h>
-
-#ifndef LOG_LEVEL
-#define LOG_LEVEL 0
-#include <flawless/logging/logging.h>
-#endif
-
 /*
  * how to initialize a module:
- * Use the macro MODULE_INIT_FUNCTION and fill it with the apropriate information.
+ * Use the macro MODULE_INIT_FUNCTION and fill it with the appropriate information.
  * Have a function conforming the signature of moduleInitFunc_t and pass it as function argument.
  * For the sake of having simple names for initfunctions this function must be declared static.
  * The initLevel argument describes when the module will be initialized.
@@ -39,7 +32,7 @@ typedef void (*moduleInitFunc_t)(void);
 	const moduleInitFunc_t moduleName ## _initFuncPtr = &function; \
 
 /*
- * this is the designated initialie function.
+ * this is the designated initialize function.
  * Call this once the application starts (usually in the main function)
  * This function performs the initialization of all modules in the order of the init level.
  * This function must be called before entering the message pump main loop!

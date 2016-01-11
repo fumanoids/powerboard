@@ -24,7 +24,6 @@
  *
  */
 
-
 /* this is what will be transmitted instead of a log string. The index of the beginning in an array of all logstrings
  * hard to explain but basically something really easy
  */

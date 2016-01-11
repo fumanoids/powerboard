@@ -21,9 +21,9 @@ typedef uint8_t genericProtocol_Checksum_t;
 /* buffer for one packet */
 typedef struct tag_genericProtocol_Packet
 {
+	genericProtocol_payloadLen_t payloadLen;
 	flawLessInterfaceDescriptor_t interface;
 	genericProtocol_subProtocolIdentifier_t subProtocolID;
-	genericProtocol_payloadLen_t payloadLen;
 	flawLessTransportSymbol_t packet[FLAWLESS_PROTOCOL_MAX_PACKET_LEN];
 }genericProtocoll_Packet_t;
 

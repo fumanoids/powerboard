@@ -19,11 +19,6 @@
 
 #include "systemMsgIDs.h"
 
-
-#define MSG_PUMP_MAX_FREQUENT_JOBS_COUNT 1
-
-#define MAGIC 0xDEADBEEF
-
 typedef struct st_msgPumpMsgQueueEntry
 {
 	msgPump_MsgID_t id; /* the ID of the message */
@@ -45,7 +40,7 @@ extern msgBufDescription_t _msgPumpBPHandlesBegin;
 extern msgBufDescription_t _msgPumpBPHandlesEnd;
 
 /*
- * Here we remember pointers to all the buffer hanldes which register
+ * Here we remember pointers to all the buffer handles which register
  */
 msgBufDescription_t *g_messageBuffersBuffer[MSG_LAST_ID + MSG_ID_SYSTEM_MSG_COUNT] = {NULL};
 msgBufDescription_t **g_messageBuffers = &(g_messageBuffersBuffer[MSG_ID_SYSTEM_MSG_COUNT]);
@@ -58,8 +53,8 @@ static volatile msgPumpMsgQueueEntry_t g_msgQueue[MSG_PUMP_MSG_QUEUE_MAX_SIZE];
 /*************** internal function ********************/
 static void setBufferFlag(msgBufBufData_t *buffer, msgPump_MessageBufferFlag_t flag)
 {
-	msgPump_MessageBufferFlag_t *flagPtr = ((msgPump_MessageBufferFlag_t*) buffer) - 1;
-	*flagPtr = flag;
+	msgPumpMsgHeader_t *header = ((msgPumpMsgHeader_t*) buffer) - 1;
+	header->flags = flag;
 }
 
 /*
@@ -68,13 +63,15 @@ static void setBufferFlag(msgBufBufData_t *buffer, msgPump_MessageBufferFlag_t f
  * @param callbackFunction the function to call if the message occurred
  * @param info the argument to be passed to the callback function
  * @return success. There can be a maximum amount of MAX_AMOUNT_OF_MSG_RECERIVER_PER_MESSAGE receivers per message
- */bool msgPump_registerOnMessage(const msgPump_MsgID_t id,
+ */
+bool msgPump_registerOnMessage(const msgPump_MsgID_t id,
 		const msgPump_callbackFunction_t i_callbackFunction)
 {
 	system_mutex_lock();
-	bool registerSuccess = false;
+	bool registerSuccess = FALSE;
 
 	if ((id < MSG_LAST_ID) &&
+			(id >= MSG_ID_SYSTEM_FIRST_ID) &&
 			(NULL != i_callbackFunction))
 	{
 		msgBufDescription_t *msgBuffer = g_messageBuffers[id];
@@ -87,7 +84,7 @@ static void setBufferFlag(msgBufBufData_t *buffer, msgPump_MessageBufferFlag_t f
 				if (NULL == (*msgBuffer->callbackVector)[i] || i_callbackFunction == (*msgBuffer->callbackVector)[i])
 				{
 					(*msgBuffer->callbackVector)[i] = i_callbackFunction;
-					registerSuccess = true;
+					registerSuccess = TRUE;
 					break;
 				}
 			}
@@ -102,11 +99,12 @@ static void setBufferFlag(msgBufBufData_t *buffer, msgPump_MessageBufferFlag_t f
  * unregister a function from a message
  * @param id the message's ID to unregister from
  * @param callbackFunction the function to unregister
- */bool msgPump_unregisterFromMessage(const msgPump_MsgID_t id,
+ */
+bool msgPump_unregisterFromMessage(const msgPump_MsgID_t id,
 		const msgPump_callbackFunction_t callbackFunction)
 {
 	system_mutex_lock();
-	bool unRegisterSuccess = false;
+	bool unRegisterSuccess = FALSE;
 
 
 	if ((id < MSG_LAST_ID) &&
@@ -140,134 +138,143 @@ static void setBufferFlag(msgBufBufData_t *buffer, msgPump_MessageBufferFlag_t f
  * @param messageToPost a Pointer to a memory region where the message is. This area has to be equal in size to the messageType which was specified when declaring the buffer.
  * @return success. False if the queue is full.
  */
-bool msgPump_postMessage(const msgPump_MsgID_t id, void *messageToPost)
+bool msgPump_postMessage(const msgPump_MsgID_t id, void const* messageToPost)
 {
-	bool postSuccess = false;
+	bool postSuccess = FALSE;
+	system_mutex_lock();
 	/* find the message buffer */
 	if (g_msgQueueFront == g_msgQueueTail && 0 != g_msgQueueSize)
 	{
+		system_mutex_unlock();
 		return postSuccess;
 	}
-	if ((id < MSG_LAST_ID) &&
-		(NULL != messageToPost))
+	if (id < MSG_LAST_ID)
 	{
 		msgBufDescription_t *msgBuffer = g_messageBuffers[id];
 
 		if (id == msgBuffer->id)
 		{
 			/* found it*/
-
-			msgBufBufData_t *msgBuffData = msgBuffer->data;
-			const msgBufMsgSize_t msgSize = msgBuffer->msgSize;
-
-			/* if the pointer to messageToPost belongs to an already reserved buffer use it */
-			/* don't ever use implicit casts! */
-			const uint8_t *msgBufPos = (const uint8_t*) messageToPost;
-			const uint8_t *basePos = (const uint8_t*) msgBuffData;
-			const uint16_t ptrOffset = msgBufPos - basePos;
-			const uint16_t bufLen = (msgBuffer->msgAmount
-					* (MSG_BUFFER_MSG_OVERHEAD + msgSize));
-
-			if (ptrOffset >= (MSG_BUFFER_MSG_OVERHEAD) && ptrOffset < bufLen)
+			if (NULL != messageToPost)
 			{
-				/* the caller used an internal buffer! */
-				/* but is the pointer directing to a valid element? */
-				const uint16_t msgLenWithOverhead = msgSize
-						+ MSG_BUFFER_MSG_OVERHEAD;
-				if (MSG_BUFFER_MSG_OVERHEAD == ptrOffset % msgLenWithOverhead)
-				{
-					msgPump_MessageBufferFlag_t *flagPtr =
-							((msgPump_MessageBufferFlag_t *) messageToPost) - 1;
-					msgBufRefCount_t *refCountPtr =
-							((msgBufRefCount_t*) flagPtr) - 1;
-					if (1 == *refCountPtr
-							&& MsgPump_MsgBufFlagInUse == *flagPtr)
-					{
-						system_mutex_lock();
-						/* no one else is using this buffer element! */
-						*flagPtr = MsgPump_MsgBufFlagPostedNotDispatched;
-						*refCountPtr = 1U;
+				msgBufBufData_t *msgBuffData = msgBuffer->data;
+				const msgBufMsgSize_t msgSize = msgBuffer->msgSize;
 
-						/* insert the message into the queue*/
-						g_msgQueue[g_msgQueueTail].buffer = messageToPost;
-						g_msgQueue[g_msgQueueTail].bufferDescription =
-								msgBuffer;
-						g_msgQueue[g_msgQueueTail].id = id;
-						g_msgQueueTail = (g_msgQueueTail + 1)
-								% MSG_PUMP_MSG_QUEUE_MAX_SIZE;
-						++g_msgQueueSize;
-						postSuccess = true;
-						system_mutex_unlock();
-					}
-					else
-					{
-						/* WTF?! this buffer is completely lost!!! I'll mark it as invalid */
-//							*flagPtr = MsgPump_MsgBufFlagBufferNotUsable;
-						/* ugly fix: magic recovery */
-						*flagPtr = MsgPump_MsgBufFlagNothing;
-						*refCountPtr = 0U;
-						LOG_ERROR_0("Buffer lost!");
-					}
-				}
-				else
+				/* if the pointer to messageToPost belongs to an already reserved buffer use it */
+				const uint8_t *msgBufPos = (const uint8_t*) messageToPost;
+				const uint8_t *basePos = (const uint8_t*) msgBuffData;
+				const int32_t ptrOffset = msgBufPos - basePos;
+				const int32_t bufLen = (msgBuffer->msgAmount
+						* (MSG_BUFFER_MSG_OVERHEAD + msgSize));
+
+				if (ptrOffset >= (int32_t)(MSG_BUFFER_MSG_OVERHEAD) && ptrOffset < bufLen)
 				{
-					/* BADBADBAD!!! someone is using this message pump wrong! */
-				}
-			}
-			else
-			{
-				int i;
-				/* the caller used an own buffer so we have to copy it's content into a free buffer */
-				/* find some free space in the buffer */
-				for (i = 0; i < msgBuffer->msgAmount; ++i)
-				{
-					system_mutex_lock();
-					msgBufBufData_t *curElement = &(msgBuffData[i
-							* (msgSize + MSG_BUFFER_MSG_OVERHEAD)]);
-					msgBufRefCount_t *curRefCount =
-							(msgBufRefCount_t*) curElement;
-					msgPump_MessageBufferFlag_t *curFlagPtr =
-							(msgPump_MessageBufferFlag_t*) (curElement + 1);
-					msgBufBufData_t *dataPtr = (msgBufBufData_t*) (curFlagPtr
-							+ 1);
-					if ((0 == *curRefCount)
-							&& (MsgPump_MsgBufFlagNothing == *curFlagPtr))
+					/* the caller used an internal buffer! */
+					/* but is the pointer directing to a valid element? */
+					const uint16_t msgLenWithOverhead = msgSize
+							+ MSG_BUFFER_MSG_OVERHEAD;
+					if (MSG_BUFFER_MSG_OVERHEAD == ptrOffset % msgLenWithOverhead)
 					{
-						/* found a free buffer! */
-						bool lockSuccess = msgPump_lockMessage(dataPtr);
-						if (true == lockSuccess)
+						msgPumpMsgHeader_t *header = ((msgPumpMsgHeader_t*) messageToPost) - 1;
+						if ((1 == header->refCnt)
+								&& (MsgPump_MsgBufFlagInUse == header->flags)
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+								&& (MSG_PUMP_MAGIC == header->headerMagic)
+#endif
+								)
 						{
-							*curFlagPtr = MsgPump_MsgBufFlagPostedNotDispatched;
-							memcpy(dataPtr, messageToPost, msgSize);
+							/* no one else is using this buffer element! */
+							header->flags = MsgPump_MsgBufFlagPostedNotDispatched;
+							header->refCnt = 1U;
 
 							/* insert the message into the queue*/
-							g_msgQueue[g_msgQueueTail].buffer = dataPtr;
+							g_msgQueue[g_msgQueueTail].buffer = (msgBufBufData_t*)messageToPost;
 							g_msgQueue[g_msgQueueTail].bufferDescription =
 									msgBuffer;
 							g_msgQueue[g_msgQueueTail].id = id;
 							g_msgQueueTail = (g_msgQueueTail + 1)
 									% MSG_PUMP_MSG_QUEUE_MAX_SIZE;
 							++g_msgQueueSize;
-							postSuccess = true;
-							system_mutex_unlock();
-							break;
-						} else
+							postSuccess = TRUE;
+						}
+						else
 						{
-							/* cannot lock this buffer (should not happen anyway) */
-							continue;
+							/* WTF?! this buffer is completely lost!!! I'll mark it as invalid */
+	//							*flagPtr = MsgPump_MsgBufFlagBufferNotUsable;
+							/* ugly fix: magic recovery */
+							header->flags = MsgPump_MsgBufFlagNothing;
+							header->refCnt = 0U;
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+							header->headerMagic = MSG_PUMP_MAGIC;
+#endif
+							LOG_ERROR_0("Buffer lost!");
 						}
 					}
-					system_mutex_unlock();
+					else
+					{
+						/* BADBADBAD!!! someone is using this message pump wrong! */
+					}
 				}
-				if (false == postSuccess)
+				else
 				{
+					int i;
+					/* the caller used an own buffer so we have to copy it's content into a free buffer */
+					/* find some free space in the buffer */
+					for (i = 0; i < msgBuffer->msgAmount; ++i)
+					{
+						msgBufBufData_t *curElement = &(msgBuffData[i
+								* (msgSize + MSG_BUFFER_MSG_OVERHEAD)]);
+						msgPumpMsgHeader_t *curHeader = (msgPumpMsgHeader_t*) curElement;
+						msgBufBufData_t *dataPtr = (msgBufBufData_t*) (curHeader + 1);
+						if ((0 == curHeader->refCnt)
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+								&& (MSG_PUMP_MAGIC == curHeader->headerMagic)
+#endif
+								&& (MsgPump_MsgBufFlagNothing == curHeader->flags))
+						{
+							/* found a free buffer! */
+							bool lockSuccess = msgPump_lockMessage(dataPtr);
+							if (TRUE == lockSuccess)
+							{
+								curHeader->flags = MsgPump_MsgBufFlagPostedNotDispatched;
+								memcpy(dataPtr, messageToPost, msgSize);
+
+								/* insert the message into the queue*/
+								g_msgQueue[g_msgQueueTail].buffer = dataPtr;
+								g_msgQueue[g_msgQueueTail].bufferDescription =
+										msgBuffer;
+								g_msgQueue[g_msgQueueTail].id = id;
+								g_msgQueueTail = (g_msgQueueTail + 1)
+										% MSG_PUMP_MSG_QUEUE_MAX_SIZE;
+								++g_msgQueueSize;
+								postSuccess = TRUE;
+								break;
+							} else
+							{
+								/* cannot lock this buffer (should not happen anyway) */
+								continue;
+							}
+						}
+					}
 				}
+			} else
+			{
+				/* the message contains a nullpointer. thats easy to handle */
+				/* insert the message into the queue*/
+				g_msgQueue[g_msgQueueTail].buffer = (msgBufBufData_t*)messageToPost;
+				g_msgQueue[g_msgQueueTail].bufferDescription = msgBuffer;
+				g_msgQueue[g_msgQueueTail].id = id;
+				g_msgQueueTail = (g_msgQueueTail + 1)
+						% MSG_PUMP_MSG_QUEUE_MAX_SIZE;
+				++g_msgQueueSize;
+				postSuccess = TRUE;
 			}
 		}
 	}
-	if (false == postSuccess)
+	if (FALSE == postSuccess)
 	{
 	}
+	system_mutex_unlock();
 	return postSuccess;
 }
 
@@ -276,31 +283,31 @@ bool msgPump_postMessage(const msgPump_MsgID_t id, void *messageToPost)
  * The MessagePump decrements the retain count after each callback function returned so use this function if you need access to that data later.
  * @return success. Returns false if the message cannot be locked any more because an overflow would happen.
  */
- bool msgPump_lockMessage(void *messageToPost)
+ bool msgPump_lockMessage(void *messageToLock)
 {
-	bool ret = false;
-	msgBufRefCount_t *refCountPtr;
-	msgPump_MessageBufferFlag_t *flagPtr;
-	msgBufRefCount_t refCount;
-	msgPump_MessageBufferFlag_t flag;
-
-	flagPtr = ((msgPump_MessageBufferFlag_t*) messageToPost) - 1;
-	refCountPtr = ((msgBufRefCount_t*) flagPtr) - 1;
-	system_mutex_lock();
-	flag = *flagPtr;
-	refCount = *refCountPtr;
-
-	if ((255U > refCount) && (MsgPump_MsgBufFlagBufferNotUsable != flag))
+	bool ret = FALSE;
+	if (messageToLock != NULL)
 	{
-		/* we can increment the reference count */
-		*(refCountPtr) += 1;
-		ret = true;
-	} else
-	{
-		LOG_WARNING_0("cannot lock buffer");
-		ret = false;
+		msgPumpMsgHeader_t *header = ((msgPumpMsgHeader_t *) messageToLock) - 1;
+		system_mutex_lock();
+
+		if ((255U > header->refCnt)
+				&& (MsgPump_MsgBufFlagBufferNotUsable != header->flags)
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+				&& (MSG_PUMP_MAGIC == header->headerMagic)
+#endif
+				)
+		{
+			/* we can increment the reference count */
+			header->refCnt += 1;
+			ret = TRUE;
+		} else
+		{
+			LOG_WARNING_0("cannot lock buffer");
+			ret = FALSE;
+		}
+		system_mutex_unlock();
 	}
-	system_mutex_unlock();
 	return ret;
 }
 
@@ -311,31 +318,30 @@ bool msgPump_postMessage(const msgPump_MsgID_t id, void *messageToPost)
  * A Message is considered to be free if the amount of unlocks is equal to the amount of locks.
  * @return success. If this operation causes the reference count to be less 0 false.
  */
- bool msgPump_unlockMessage(void *messageToPost)
+bool msgPump_unlockMessage(void *messageToUnlock)
 {
-	bool ret = false;
-	msgBufRefCount_t *refCountPtr;
-	msgPump_MessageBufferFlag_t *flagPtr;
-	msgBufRefCount_t refCount;
-	msgPump_MessageBufferFlag_t flag;
-
-	flagPtr = ((msgPump_MessageBufferFlag_t*) messageToPost) - 1;
-	refCountPtr = ((msgBufRefCount_t*) flagPtr) - 1;
-	system_mutex_lock();
-	flag = *flagPtr;
-	refCount = *refCountPtr;
-
-	if ((0U < refCount) && (MsgPump_MsgBufFlagBufferNotUsable != flag))
+	bool ret = FALSE;
+	if (NULL != messageToUnlock)
 	{
-		/* we can decrement the reference count */
-		*(refCountPtr) -= 1;
-		ret = true;
-	} else
-	{
-		LOG_WARNING_0("cannot unlock a buffer!");
+		system_mutex_lock();
+		msgPumpMsgHeader_t *header = ((msgPumpMsgHeader_t *) messageToUnlock) - 1;
+		if ((0U < header->refCnt)
+				&& (MsgPump_MsgBufFlagBufferNotUsable != header->flags)
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+				&& (MSG_PUMP_MAGIC == header->headerMagic)
+#endif
+				)
+		{
+			/* we can decrement the reference count */
+			header->refCnt -= 1;
+			ret = TRUE;
+		} else
+		{
+			LOG_WARNING_0("cannot unlock a buffer!");
+		}
+
+		system_mutex_unlock();
 	}
-
-	system_mutex_unlock();
 	return ret;
 }
 
@@ -343,48 +349,52 @@ bool msgPump_postMessage(const msgPump_MsgID_t id, void *messageToPost)
  * if there is a free (not-locked) buffer element in a messageBuffer it can be locked with this function
  * @return success. false if there is no unused buffer element
  */
- bool msgPump_getFreeBuffer(const msgPump_MsgID_t id,
+bool msgPump_getFreeBuffer(const msgPump_MsgID_t id,
 		void **o_destPtr)
 {
-	bool ret = false;
+	bool ret = FALSE;
 	int i;
-	msgBufDescription_t *bufferDescriptor = g_messageBuffers[id];
-	if (NULL != bufferDescriptor)
+	if ((id < MSG_LAST_ID) && (id > MSG_ID_SYSTEM_FIRST_ID))
 	{
-		system_mutex_lock();
-		for (i = 0; i < bufferDescriptor->msgAmount; ++i)
+		msgBufDescription_t *bufferDescriptor = g_messageBuffers[id];
+		if ((NULL != bufferDescriptor) && (NULL != o_destPtr))
 		{
-			msgBufRefCount_t *refCountPtr =
-					(msgBufRefCount_t *) &(bufferDescriptor->data[i
-							* (bufferDescriptor->msgSize + MSG_BUFFER_MSG_OVERHEAD)]);
-			msgPump_MessageBufferFlag_t *flagPtr =
-					(msgPump_MessageBufferFlag_t*)( refCountPtr + 1);
-			msgBufBufData_t *bufData = (msgBufBufData_t*) (flagPtr + 1);
-			if (0 == *refCountPtr && MsgPump_MsgBufFlagNothing == *flagPtr)
+			system_mutex_lock();
+			for (i = 0; i < bufferDescriptor->msgAmount; ++i)
 			{
-				/* found a free buffer element */
-				*o_destPtr = bufData;
-				/* lock it */
-				bool lockSuccess = msgPump_lockMessage(*o_destPtr);
-				if (true == lockSuccess)
+				msgPumpMsgHeader_t *header = (msgPumpMsgHeader_t*) &(bufferDescriptor->data[i * (bufferDescriptor->msgSize + MSG_BUFFER_MSG_OVERHEAD)]);
+				msgBufBufData_t *bufData = (msgBufBufData_t*) (header + 1);
+				if ((0 == header->refCnt)
+						&& (MsgPump_MsgBufFlagNothing == header->flags)
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+						&& (MSG_PUMP_MAGIC == header->headerMagic)
+#endif
+						)
 				{
-					/* we were able to lock this buffer element so get out of the loop */
-					/* this check is necessary since an interrupt can catch the buffer element before we do */
-					*flagPtr = MsgPump_MsgBufFlagInUse;
-					ret = true;
-					break;
+					/* found a free buffer element */
+					*o_destPtr = bufData;
+					/* lock it */
+					bool lockSuccess = msgPump_lockMessage(*o_destPtr);
+					if (TRUE == lockSuccess)
+					{
+						/* we were able to lock this buffer element so get out of the loop */
+						/* this check is necessary since an interrupt can catch the buffer element before we do */
+						header->flags = MsgPump_MsgBufFlagInUse;
+						ret = TRUE;
+						break;
+					}
+				} else
+				{
+					*o_destPtr = NULL;
 				}
-			} else
-			{
-				*o_destPtr = NULL;
 			}
+			system_mutex_unlock();
 		}
-		system_mutex_unlock();
 	}
 
-	if (false == ret)
+	if (FALSE == ret)
 	{
-		LOG_WARNING_0("Cannot provide free buffer");
+//		LOG_WARNING_0("Cannot provide free buffer");
 		*o_destPtr = NULL;
 	}
 	return ret;
@@ -392,11 +402,11 @@ bool msgPump_postMessage(const msgPump_MsgID_t id, void *messageToPost)
 
 void msgPump_pumpMessage()
 {
-	while (true)
+	while (TRUE)
 	{
 		if (g_msgQueueSize != 0)
 		{
-			LOG_VERBOSE_0("pumping");
+//			LOG_VERBOSE_0("pumping");
 			volatile msgPumpMsgQueueEntry_t *message =
 					&(g_msgQueue[g_msgQueueFront]);
 			uint8_t i;
@@ -443,8 +453,20 @@ static void msgPump_init(void)
 
 		while (desc < &_msgPumpBPHandlesEnd)
 		{
+			uint8_t i = 0;
+
 			g_messageBuffers[desc->id] = desc;
 			memset(desc->data, 0, (desc->msgAmount * (desc->msgSize + MSG_BUFFER_MSG_OVERHEAD)));
+
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+			/* add some magic */
+			for (i = 0U; i < desc->msgAmount; ++i)
+			{
+				msgPumpMsgHeader_t *header = (msgPumpMsgHeader_t *)&(((uint8_t*)desc->data)[i * (desc->msgSize + MSG_BUFFER_MSG_OVERHEAD)]);
+				header->headerMagic = MSG_PUMP_MAGIC;
+			}
+#endif
+
 			desc += 1;
 		}
 		memset((void*)g_msgQueue, 0, sizeof(g_msgQueue));

@@ -9,9 +9,11 @@
 #define LOGGING_CONFIG_H_
 
 /*
- * uncomment this to suppress all log output
+ * define this to suppress all log output
  */
+#ifndef NO_LOG_OUTPUT
 #define NO_LOG_OUTPUT
+#endif
 
 
 #endif /* LOGGING_CONFIG_H_ */

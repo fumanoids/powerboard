@@ -52,11 +52,10 @@ The directories in the root directory are:
 
  - bin      -- some useful scripts and programs for building the program and
                documentation
- - build    -- All binary files of the program go here. This directory will
+ - obj      -- All binary files of the program go here. This directory will
                be created during code compilation.
  - doc      -- The documentation directory. Here you can find some 
-               documentation of the board. There are pdf files containing
-               the schematics and the layout.
+               documentation of the board.
  - src      -- The actual source code.
                Note: The essential parts of the software is pretty well
                documented. Please consider this as a documentation 
@@ -76,10 +75,10 @@ The software is written in C with two extensions in assembler
 (system_mutex_lock() and system_mutex_unlock()).
 
 A compiler for the target hardware is not part of this package but can be picked
-based on the user's preferences. We recommend using the avr-toolchain
+based on the user's preferences. We recommend using the arm-none-eabi-toolchain
 (including gcc, ld and gdb) which can be found here:
 
-                  http://gcc.gnu.org/
+                  https://launchpad.net/gcc-arm-embedded/+download
 
  2.1.2 Hardware
 
@@ -93,13 +92,13 @@ be found in the folder where the schematics reside. But please double check the
 partlist since we cannot guarantee its completeness.
 
 We chose every component on the board to be manually solderable. All you need is
-a steady hand.
+a steady hand. And preferably a rework station.
 
  2.1.4 Other Prerequisites
  
-To flash the target an AVR compatible ISP is needed.
+To flash the target an ARM compatible JTAG is needed.
 
-We recommend using an "AVRISP mk II" from Atmel.
+We recommend using an "JLink" from Segger.
 There is numerous software available for all major operating systems supporting
 the programmer (Linux, Mac, Windows). 
 
@@ -107,10 +106,8 @@ the programmer (Linux, Mac, Windows).
  2.2 Compiling the Software
 ---------------------------
 
-The build system is based on premake4. We include a more recent binary version
-of premake4 than currently available in e.g. Ubuntu. If you want the sourcecode
-of premake have a look at http://industriousone.com/premake. Premake is licenced
-under the terms of the BSD License.
+To compile for debug run: make
+To build a release build: RELEASE=1 make
 
 The common IDE used for development in team FUmanoids is Eclipse/CDT which
 is available at http://www.eclipse.org. Therefore we have the corresponding
@@ -118,7 +115,7 @@ project files added to our repository, to give an easy start. You can build the
 code either by using Eclipse or by shell tools. Both ways are easy.
 Other IDEs or editors can of course be used.
 
-The build process generates a .hex file which can be flashed on the target.
+The build process generates a .elf file which can be flashed on the target.
 
  2.2.1 Using Eclipse
 
@@ -131,22 +128,21 @@ directory. Then you can compile the debug or release version of the software.
 
 You can simply run
 
- ./bin/compile.sh stromplatine release
+ make
 
-to compile the code. This runs premake to generate the make-files and
-runs "make" with the appropriate targets afterwards.
-
+to compile the code.
 
  2.3 Flashing the target
 ------------------------
 
-In order to flash the target you need an ISP. We recommend using avrdude as 
-software to communicate with the ISP and as tool to download code onto the
-target.
+In order to flash the target you need an JTAG. We recommend using the 
+Segger/JLink software to communicate with the JTAG and as tool to download 
+code onto the target.
 
-If you have arvdude installed you can use 
+If you have JLinkGDBServer installed you can use 
 
-./bin/flash.sh build/release/stromplatine.hex 
+JLinkGDBServer -if swd
+make flash 
 
 to flash the target.
 

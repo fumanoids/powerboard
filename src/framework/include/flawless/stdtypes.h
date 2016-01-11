@@ -1,6 +1,7 @@
 #ifndef STDTYPES_H
 #define STDTYPES_H
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -23,6 +24,10 @@
 
 #ifndef MIN
 #define MIN(a,b) ((a > b)? b:a)
+#endif
+
+#ifndef NULL
+#define NULL ((void*)0)
 #endif
 
 #endif

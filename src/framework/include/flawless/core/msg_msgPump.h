@@ -43,6 +43,16 @@ typedef enum en_msgPump_MessageBufferFlag
 	MsgPump_MsgBufFlagBufferNotUsable = 1 << 2
 }msgPump_MessageBufferFlag_t;
 
+typedef struct st_msgPumpMsgHeader
+{
+#ifdef MSG_PUMP_USE_HEADER_MAGIC
+	uint32_t headerMagic;
+#endif
+	msgBufRefCount_t refCnt;
+	msgPump_MessageBufferFlag_t flags;
+	uint16_t padding;
+}msgPumpMsgHeader_t;
+
 typedef enum en_msgPrioirity
 {
 	MsgPriorityLow,
@@ -59,28 +69,25 @@ typedef struct st_msgBufDescription
 	const msgBufPos_t const	msgAmount;						/* the amount of messages which can be stored in this buffer */
 	const msgPump_MsgID_t const id;							/* the id of this message */
 	msgPumpCallBackVector_t * const callbackVector;
-	uint32_t padding1;
-	uint32_t padding2;
 }msgBufDescription_t;
 
-#define MSG_BUFFER_MSG_OVERHEAD (sizeof(msgBufRefCount_t) + sizeof(msgPump_MessageBufferFlag_t))
+#define MSG_BUFFER_MSG_OVERHEAD (sizeof(msgPumpMsgHeader_t))
 
 #define MSG_PUMP_DECLARE_MESSAGE_BUFFER_POOL(bufferName, messageType, bufferSize, messageID) \
 		/* the actual memory to be used */\
 		msgPumpCallBackVector_t bufferName ## _callbackVector;\
 		/* the memory of the buffer is aligned like: refCount1, flag, messageBuf1, refCount2, flag, messageBuf2.. etc */\
-		msgBufBufData_t  bufferName ## _data_p [bufferSize * (sizeof(messageType) + MSG_BUFFER_MSG_OVERHEAD)]; \
+		msgBufBufData_t  bufferName ## _data_p [bufferSize * (((sizeof(messageType) + 3) & ~(3)) + MSG_BUFFER_MSG_OVERHEAD)]; \
 			\
 		__attribute__ ((unused))\
 		__attribute__ ((section(".msgPumpDescriptions")))\
 		const msgBufDescription_t bufferName ## _description = \
 												{ \
 													bufferName ## _data_p,	\
-													sizeof(messageType),	\
+													((sizeof(messageType) + 3) & ~(3)),	\
 													bufferSize,	\
 													messageID,	\
 													&bufferName ## _callbackVector, \
-													0,0 \
 												};\
 
 /*
@@ -105,7 +112,7 @@ bool msgPump_unregisterFromMessage(const msgPump_MsgID_t id, const msgPump_callb
  * @param messageToPost a Pointer to a memory region where the message is. This area has to be equal in size to the messageType which was specified when declaring the buffer.
  * @return success. False if the queue is full.
  */
-bool msgPump_postMessage(const msgPump_MsgID_t id, void *messageToPost);
+bool msgPump_postMessage(const msgPump_MsgID_t id, void const* messageToPost);
 
 /**
  * Add a reference to this message to prevent this buffer to be overwritten when a new message was posted.

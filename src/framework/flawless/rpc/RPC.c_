@@ -27,10 +27,10 @@ MSG_PUMP_DECLARE_MESSAGE_BUFFER_POOL(rpcDispatcherBuffer, genericProtocoll_Packe
 
 static int32_t g_rpcFunctionCount = 0U;
 
-typedef struct tag_rpcResponseHeander
+typedef struct tag_rpcResponseHeader
 {
 	RPC_ID_t rpcID;
-}rpc_ResponseHeander_t;
+}rpc_ResponseHeader_t;
 
 
 static uint16_t strLen(const char *str);
@@ -49,7 +49,7 @@ static uint16_t strLen(const char *str)
 RPC_FUNCTION(rpcProbeSmallFunction, "RPCProbe", "A function which enumerates all implemented RPC functions on this device. \n Warning, this function does not return an uint8_t! And call it with the identifier -1", uint8_t, uint8_t, true, true)
 	/* tells the calling application what is implemented on this device */
 	RPC_ID_t i;
-	rpc_ResponseHeander_t respHeader;
+	rpc_ResponseHeader_t respHeader;
 	const moduleRPCInfoHandle_t *rpcHandle = &_moduleRPCHandlesBegin;
 
 	const RPC_ID_t rpcFuncCount = (RPC_ID_t)g_rpcFunctionCount;
@@ -109,7 +109,7 @@ RPC_FUNCTION(rpcProbeDescriptiveFunction, "RPCProbeDescriptive", "A function whi
 
 	/* tells the calling application what is implemented on this device */
 	RPC_ID_t i;
-	rpc_ResponseHeander_t respHeader;
+	rpc_ResponseHeader_t respHeader;
 	const moduleRPCInfoHandle_t *rpcHandle = &_moduleRPCHandlesBegin;
 
 	const RPC_ID_t rpcFuncCount = (RPC_ID_t)g_rpcFunctionCount;
@@ -200,7 +200,7 @@ static void rpcEndPoint(const void *i_packet, uint16_t i_packetLen, flawLessInte
 					rpcProbeDescriptiveFunction(parameterPtr, retValPtr, parameterLengthPtr, &retValLen, RPC_PROBE_DESCRIPTIVE_IDENTIFIER, i_interfaceDescriptor);
 					break;
 				default:
-					/* verwerfen (not implemented) */
+					/* discard (not implemented) */
 					break;
 			}
 		} else
@@ -223,8 +223,8 @@ static void rpcEndPoint(const void *i_packet, uint16_t i_packetLen, flawLessInte
 								(0 != retValLen) && /* dont send if there is nothing to tell*/
 								(NULL != retValPtr))
 						{
-							rpc_ResponseHeander_t respHeader;
-							const RPC_paramLength_t payLoadLen = retValLen + sizeof(rpc_ResponseHeander_t);
+							rpc_ResponseHeader_t respHeader;
+							const RPC_paramLength_t payLoadLen = retValLen + sizeof(rpc_ResponseHeader_t);
 							respHeader.rpcID = *targetIDPtr;
 							genericProtocol_BeginTransmittingFrame(i_interfaceDescriptor, payLoadLen, RPC_SUB_PROTOCOL_IDENTIFIER);
 							genericProtocol_SendInsideFrame(i_interfaceDescriptor, sizeof(respHeader), &respHeader);
@@ -240,8 +240,8 @@ static void rpcEndPoint(const void *i_packet, uint16_t i_packetLen, flawLessInte
 
 void sendRPC_responseManually(RPC_ID_t senderID, RPC_paramLength_t paramLen, const void* param, const flawLessInterfaceDescriptor_t i_interfaceDescriptor)
 {
-	rpc_ResponseHeander_t respHeader;
-	const RPC_paramLength_t payLoadLen = paramLen + sizeof(rpc_ResponseHeander_t);
+	rpc_ResponseHeader_t respHeader;
+	const RPC_paramLength_t payLoadLen = paramLen + sizeof(rpc_ResponseHeader_t);
 	respHeader.rpcID = senderID;
 	genericProtocol_BeginTransmittingFrame(i_interfaceDescriptor, payLoadLen, RPC_SUB_PROTOCOL_IDENTIFIER);
 	genericProtocol_SendInsideFrame(i_interfaceDescriptor, sizeof(respHeader), &respHeader);

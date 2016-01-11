@@ -1,0 +1,81 @@
+Partlist
+
+Exported from stromplatine3.brd at 10.11.15 11:30
+
+EAGLE Version 6.6.0 Copyright (c) 1988-2014 CadSoft
+
+Assembly variant: 
+
+Part           Value          Package     Library       Position (mm)         Orientation
+
+#### vorrätig:
+4x
+5V_CON1                       02P         con-amp-quick (68 3)                R90
+3x
+BUTTONS                       04P         con-amp-quick (25 24)               R270
+7x
+C6             0.1uF          C0603       resistor      (57 19.1)             R180
+1x
+F1                            SHK20Q      fuse          (5 15)                R270
+1x
+J1                            10X05MTA    con-amp       (28 3)                R0
+1x
+U$3            RGB-LED        4-PLCC      smd-rgbled    (31 26)               R90
+5x
+R2             1kR            R0603       resistor      (15 15)               MR0
+2x
+R1             100kR          R0603       resistor      (11 12)               MR90
+8x
+R6             10kR           R0603       resistor      (39.5 10.5)           MR270
+1x
+R10            68R            R0603       resistor      (30 21)               R270
+1x
+R11            82R            R0603       resistor      (32 17)               R270
+1x
+R12            82R            R0603       resistor      (32 21)               R270
+2x
+Q1                            SOT23       adafruit      (44 12)               MR90
+1x
+U$1                           UFQFPN32    stm32f051     (30 12)               R0
+1x
+U$2                           SOT-23-5    stromplatine  (22 10)               R270
+2x
+U$4                           TO-252      stromplatine  (15 6)                R180
+
+#### nicht vorrätig:
+3x
+C2             47uF           C1206       resistor      (56 23.5)             R180
+http://www.digikey.com/product-detail/en/CL31A476MQHNNNE/1276-1167-1-ND/3889253
+
+2x
+C12            470uF          175TMP-0810 resistor      (64 25)               R180
+http://www.digikey.com/product-search/en?vendor=0&keywords=493-3771-1-ND
+
+3x
+C11            10uF           C1206       resistor      (49.5 18)             MR90
+http://www.digikey.com/product-detail/en/TMK316F106ZL-T/587-1353-1-ND/931130
+
+2x
+D_FREILAUF                    DO-214AC    diode         (65 26)               MR90
+http://www.digikey.com/product-detail/en/S1G/S1GFSCT-ND/965720
+
+
+1x
+R6             10kR           R0603       resistor      (39.5 10.5)           MR270
+http://www.digikey.com/product-detail/en/RC1608F103CS/1276-3485-1-ND/3903588
+
+1x
+R5             1.5kR (1%)     R0603       resistor      (51 24)               MR270
+http://www.digikey.com/product-detail/en/RC1608F152CS/1276-4660-1-ND/3967632
+
+1x
+R31            390R (1%)      R0603       resistor      (49 24)               MR90
+http://www.digikey.com/product-detail/en/RC1608F391CS/1276-4610-1-ND/3967582
+
+2x
+U$6                           QFN-12-EX   stromplatine  (65 13)               MR0
+http://www.digikey.com/product-detail/en/ACS711EEXLT-15AB-T/620-1481-1-ND/3868196
+
+1x
+U$11                          TZA11A      stromplatine  (41 22)               R90
+http://www.digikey.com/product-detail/en/LMZ12010TZE%2FNOPB/296-40327-1-ND/5178204

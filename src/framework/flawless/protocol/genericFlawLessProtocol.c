@@ -8,6 +8,12 @@
 
 #include <flawless/stdtypes.h>
 #include <flawless/misc/Assert.h>
+#include <flawless/platform/system.h>
+
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+#include <flawless/timer/swTimer.h>
+#include <string.h>
+#endif
 
 #include <flawless/init/systemInitializer.h>
 #include <flawless/protocol/genericFlawLessProtocol_Data.h>
@@ -42,11 +48,27 @@ typedef struct tag_genericProtocolSendStatus
 	bool isSending;
 } genericProtocol_SendState_t;
 
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+
+typedef struct tag_genericProtocolInterfaceStatistics
+{
+	uint16_t totalPackets;
+	uint16_t checkSumErrors;
+	uint16_t syncErrors;
+	uint16_t sizeErrors;
+} genericProtocolInterfaceStatistics_t;
+
+typedef genericProtocolInterfaceStatistics_t genericProtocolInterfaceStatisticsArray_t[3];
+
+#endif
 
 /********************* Globals ***********************************/
 static genericProtocolReceiveState_t g_receiveState[FLAWLESS_PROTOCOL_PHY_INTERFACES_COUNT];
 static genericProtocol_SendState_t g_sendState[FLAWLESS_PROTOCOL_PHY_INTERFACES_COUNT];
 
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+genericProtocolInterfaceStatisticsArray_t g_interfaceStatistics;
+#endif
 /******************* the physical interfaces ********************/
 #define WEAK __attribute__ ((weak))
 
@@ -58,12 +80,21 @@ void WEAK phySendFunction0(const flawLessTransportSymbol_t *i_data, uint16_t pac
 
 const phySendFunction_t g_sendFunctions[FLAWLESS_PROTOCOL_PHY_INTERFACES_COUNT] =
 {
-		&phySendFunction0
+		phySendFunction0,
 };
+
+void dummySendFunction(const flawLessTransportSymbol_t *data, uint16_t packetLen)
+{
+	/* do nothing */
+	UNUSED(data);
+	UNUSED(packetLen);
+}
+
+#pragma weak phySendFunction0 = dummySendFunction
 
 /***************** Message related stuff ************************/
 
-#define GENERIC_PROTCOL_BUFFER_COUNT  2
+#define GENERIC_PROTCOL_BUFFER_COUNT  20
 MSG_PUMP_DECLARE_MESSAGE_BUFFER_POOL(protocollIGEP_IGEPBuffer, genericProtocoll_Packet_t, GENERIC_PROTCOL_BUFFER_COUNT, MSG_ID_GENERIC_PROTOCOL_PACKET_READY)
 
 /***************** Functions **********************/
@@ -74,12 +105,27 @@ static genericProtocol_Checksum_t genericProtocol_sendChecksum(flawLessInterface
 
 static void genericProtocol_receiveByte(flawLessInterfaceDescriptor_t i_interface, const uint8_t received);
 
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+
+MSG_PUMP_DECLARE_MESSAGE_BUFFER_POOL(interfaceStatistics, genericProtocolInterfaceStatisticsArray_t, 1, MSG_ID_GENERIC_PROTOCOL_PACKET_STATISTICS)
+static void onStatisticsTimer(void);
+static void onStatisticsTimer(void)
+{
+	msgPump_postMessage(MSG_ID_GENERIC_PROTOCOL_PACKET_STATISTICS, &g_interfaceStatistics);
+	system_mutex_lock();
+	memset(&g_interfaceStatistics, 0, sizeof(g_interfaceStatistics));
+	system_mutex_unlock();
+}
+
+#endif
+
 static bool genericProtocoll_resetBuffer(flawLessInterfaceDescriptor_t i_interface)
 {
-	bool ret = false;
+	ASSERT(i_interface < FLAWLESS_PROTOCOL_PHY_INTERFACES_COUNT);
 
 	void *bufPtr = NULL;
 	const bool acquireSuccess = msgPump_getFreeBuffer(MSG_ID_GENERIC_PROTOCOL_PACKET_READY, &bufPtr);
+	system_mutex_lock();
 	if (false != acquireSuccess)
 	{
 		/* reset the bufferStatus */
@@ -97,17 +143,20 @@ static bool genericProtocoll_resetBuffer(flawLessInterfaceDescriptor_t i_interfa
 	g_receiveState[i_interface].receivedPayloadBytes    = 0;
 	g_receiveState[i_interface].checkSum                = 0U;
 
-	return ret;
+	system_mutex_unlock();
+	return acquireSuccess;
 }
 
 static void genericProtocol_receiveByte(flawLessInterfaceDescriptor_t i_interface, const uint8_t i_received)
 {
 	/* check if we have to acquire a buffer */
+	ASSERT(i_interface < FLAWLESS_PROTOCOL_PHY_INTERFACES_COUNT);
 	genericProtocolReceiveState_t *receiveState = &g_receiveState[i_interface];
 	if (NULL == receiveState->buffer)
 	{
 		const bool resetSuccess = genericProtocoll_resetBuffer(i_interface);
-		ASSERT(true == resetSuccess);
+//		ASSERT(true == resetSuccess);
+		UNUSED(resetSuccess);
 	}
 
 	if (NULL != receiveState->buffer)
@@ -118,6 +167,14 @@ static void genericProtocol_receiveByte(flawLessInterfaceDescriptor_t i_interfac
 			{
 				if (FLAWLESS_PROTOCOL_PACKET_CHAR_BEGINNING == i_received)
 				{
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+					if (GENERIC_PROTOCOL_RECEIVING_PAYLOAD == receiveState->mode)
+					{
+						g_interfaceStatistics[i_interface].syncErrors += 1;
+					}
+					g_interfaceStatistics[i_interface].totalPackets += 1;
+#endif
+
 					/* this must be the beginning of a new packet! Or we are completely out of synch... whatever */
 					receiveState->mode = GENERIC_PROTOCOL_RECEIVING_PAYLOAD;
 					receiveState->checkSum = 0U;
@@ -133,6 +190,11 @@ static void genericProtocol_receiveByte(flawLessInterfaceDescriptor_t i_interfac
 		if (FLAWLESS_PROTOCOL_MAX_PACKET_LEN <= receiveState->receivedPayloadBytes)
 		{
 			/* we cannot process that message so try to synch up with the next packet */
+			receiveState->mode = GENERIC_PROTOCOL_RECEIVING_UNKOWN;
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+			g_interfaceStatistics[i_interface].sizeErrors += 1;
+#endif
+			return;
 		}
 
 		receiveState->checkSum += i_received;
@@ -179,18 +241,30 @@ static void genericProtocol_receiveByte(flawLessInterfaceDescriptor_t i_interfac
 					if (0U == receiveState->checkSum)
 					{
 						receiveState->buffer->interface = i_interface;
-						receiveState->buffer->payloadLen = receiveState->receivedPayloadBytes - sizeof(genericProtocol_Checksum_t) - sizeof(genericProtocol_subProtocolIdentifier_t);
+						if (receiveState->receivedPayloadBytes >= (sizeof(genericProtocol_Checksum_t) + sizeof(genericProtocol_subProtocolIdentifier_t)))
 						{
-							/* post it */
-							const bool postSuccess = msgPump_postMessage(MSG_ID_GENERIC_PROTOCOL_PACKET_READY, receiveState->buffer);
-							if (false != postSuccess)
+							receiveState->buffer->payloadLen = receiveState->receivedPayloadBytes - sizeof(genericProtocol_Checksum_t) - sizeof(genericProtocol_subProtocolIdentifier_t);
 							{
-								/* everything is fine */
-								receiveState->buffer = NULL;
+								/* post it */
+								const bool postSuccess = msgPump_postMessage(MSG_ID_GENERIC_PROTOCOL_PACKET_READY, receiveState->buffer);
+								if (false != postSuccess)
+								{
+									/* everything is fine */
+									receiveState->buffer = NULL;
+								}
+								genericProtocoll_resetBuffer(i_interface);
 							}
-							genericProtocoll_resetBuffer(i_interface);
+						} else
+						{
+							receiveState->mode = GENERIC_PROTOCOL_RECEIVING_UNKOWN;
 						}
 					}
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+					else
+					{
+						g_interfaceStatistics[i_interface].checkSumErrors += 1;
+					}
+#endif
 					receiveState->checkSum = 0U;
 					receiveState->receivedPayloadBytes = 0U;
 					break;
@@ -225,7 +299,10 @@ static genericProtocol_Checksum_t genericProtocol_send(flawLessInterfaceDescript
 		case FLAWLESS_PROTOCOL_PACKET_CHAR_END:
 		case FLAWLESS_PROTOCOL_PACKET_CHAR_ESCAPE:
 			/* transmitt escape char */
-			(void)(sendFunction)(&escapeChar, sizeof(escapeChar));
+			if (&dummySendFunction != sendFunction)
+			{
+				(void)(sendFunction)(&escapeChar, sizeof(escapeChar));
+			}
 			ret += escapeChar;
 			break;
 		default:
@@ -233,8 +310,10 @@ static genericProtocol_Checksum_t genericProtocol_send(flawLessInterfaceDescript
 		}
 	}
 	ret += i_data;
-	(void)(sendFunction)(&i_data, sizeof(i_data));
-
+	if (&dummySendFunction != sendFunction)
+	{
+		(void)(sendFunction)(&i_data, sizeof(i_data));
+	}
 	return ret;
 }
 
@@ -246,23 +325,34 @@ static genericProtocol_Checksum_t genericProtocol_sendChecksum(flawLessInterface
 	const phySendFunction_t sendFunction = g_sendFunctions[i_interface];
 	static const uint8_t escapeChar = FLAWLESS_PROTOCOL_PACKET_CHAR_ESCAPE;
 
-	switch (i_checksum)
+	genericProtocol_Checksum_t checksum = (~i_checksum) + 1;
+
+	switch (checksum)
 	{
 	case FLAWLESS_PROTOCOL_PACKET_CHAR_BEGINNING:
 	case FLAWLESS_PROTOCOL_PACKET_CHAR_END:
 	case FLAWLESS_PROTOCOL_PACKET_CHAR_ESCAPE:
 		/* transmitt escape char */
-		(void)(sendFunction)(&escapeChar, sizeof(escapeChar));
+		if (&dummySendFunction != sendFunction)
+		{
+			(void)(sendFunction)(&escapeChar, sizeof(escapeChar));
+		}
 		i_checksum += escapeChar;
 		break;
 	default:
 		break;
 	}
-	i_checksum = (~i_checksum) + 1;
-	(void)(sendFunction)(&i_checksum, sizeof(i_checksum));
+	checksum = (~i_checksum) + 1;
+
+	if (&dummySendFunction != sendFunction)
+	{
+		(void)(sendFunction)(&checksum, sizeof(i_checksum));
+	}
 
 	return ret;
 }
+
+void phySendFunction0_EndOfFrameMarker();
 
 void genericProtocol_sendMessage(flawLessInterfaceDescriptor_t i_interface, genericProtocol_subProtocolIdentifier_t i_subProtocolID, uint16_t i_size, const void *i_buffer)
 {
@@ -314,11 +404,11 @@ void genericProtocol_BeginTransmittingFrame(flawLessInterfaceDescriptor_t i_inte
 
 void genericProtocol_SendInsideFrame(flawLessInterfaceDescriptor_t i_interface, uint16_t i_size, const void *buffer)
 {
+	const uint8_t *buf = (uint8_t*)buffer;
 	if (i_interface < FLAWLESS_PROTOCOL_PHY_INTERFACES_COUNT)
 	{
 		genericProtocol_SendState_t *sendState = &g_sendState[i_interface];
 		/* send payload */
-		const uint8_t *buf = (uint8_t*)buffer;
 		uint16_t i = 0U;
 		for (i = 0U; i < i_size; ++i)
 		{
@@ -362,3 +452,13 @@ static void genericProtocol_init(void)
 		}
 	}
 }
+
+#ifdef FLAWLESS_PROTOCOL_INTERFACE_STATISTICS
+static void genericProtocol_lateInit(void);
+MODULE_INIT_FUNCTION(genericProtocolLate, 9, genericProtocol_lateInit)
+static void genericProtocol_lateInit(void)
+{
+	swTimer_registerOnTimer(&onStatisticsTimer, FLAWLESS_PROTOCOL_STATISTICS_INTERVAL_MS, false);
+}
+#endif
+

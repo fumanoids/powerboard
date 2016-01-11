@@ -14,7 +14,7 @@
 /*
  * the maximum length of a single packet
  */
-#define FLAWLESS_PROTOCOL_MAX_PACKET_LEN 16U
+#define FLAWLESS_PROTOCOL_MAX_PACKET_LEN 128U
 
 /*
  * those three chars are used for packet synchronization
@@ -52,5 +52,11 @@ typedef uint8_t genericProtocol_subProtocolIdentifier_t;
  * the type of data to send
  */
 typedef uint8_t flawLessTransportSymbol_t;
+
+/*
+ * include profiling of packet errors
+ */
+//#define FLAWLESS_PROTOCOL_INTERFACE_STATISTICS 0
+//#define FLAWLESS_PROTOCOL_STATISTICS_INTERVAL_MS 5000
 
 #endif /* FLAWLESSPROTOCOL_CONFIG_H_ */
