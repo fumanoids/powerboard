@@ -1,9 +1,9 @@
            README FOR THE POWER BOARD HARD- AND SOFTWARE RELEASE
            =====================================================
 
-          2014-02-13 FUmanoids' Powerboard Hardware Release v2014
+          2016-01-11 FUmanoids' Powerboard Hardware Release v2016
 
-          Copyright (c) 2014 FUmanoids / Freie Universität Berlin
+          Copyright (c) 2016 FUmanoids / Freie Universität Berlin
                             All rights reserved
 
         For full license information, please refer to file LICENCE
@@ -17,7 +17,7 @@ Links:
        RoboCup Humanoid League Homepage          http://www.tzi.de/humanoid
 
 
-This is part of the code/hardware release of team FUmanoids, version 2014. 
+This is part of the code/hardware release of team FUmanoids, version 2016. 
 
 Our goal by releasing the source code and CAD files of components of our robot
 is to provide some insight in humanoid soccer robot development, allowing other
